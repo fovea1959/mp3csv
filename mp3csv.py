@@ -1,17 +1,21 @@
-import os
+import argparse
 import eyed3
 import csv
 import datetime
 import fnmatch
+import os
 import sqlite3
+import pathlib
+import sys
 from operator import itemgetter
 
 
-def scan_tree(startpath, d_all, d_albums):
-    for root, dirs, files in os.walk(startpath):
+def scan_tree(path_root, path_dir, d_all, d_albums):
+    scan_path = pathlib.Path(path_root, path_dir)
+    for root, dirs, files in scan_path.walk():
         for f in files:
             if fnmatch.fnmatch(f, "*.mp3"):
-                path = os.path.join(root, f)
+                path = root / f
                 tags = eyed3.load(path)
                 if tags is not None:
                     tt = tags.tag
@@ -30,7 +34,7 @@ def scan_tree(startpath, d_all, d_albums):
                     a['artists'] = artistes
                     a['title'] = tt.title if tt.title is not None else ''
                     album = a['album'] = tt.album if tt.album is not None else ''
-                    a['path'] = path
+                    a['path'] = path.relative_to(path_root)
 
                     mtime = os.path.getmtime(path)
                     a['mtime'] = str(datetime.datetime.fromtimestamp(mtime).isoformat())
@@ -49,10 +53,17 @@ def scan_tree(startpath, d_all, d_albums):
                     print("**", path)
 
 
-def main():
+def main(argv):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--root", default=".")
+    parser.add_argument("--dir", default=".")
+    args = parser.parse_args(argv)
+    print(args)
+
     d = []
     d_albums = {}
-    scan_tree("/media/wegscd/948E51A08E517BA4/Users/dwegs/Music/mp3", d, d_albums)
+    scan_tree(args.root, args.dir, d, d_albums)
+
     for d1 in d:
         print(d1)
         xx = itemgetter('artist', 'album', 'track_sort')(d1)
@@ -81,7 +92,10 @@ def main():
             dw.writerow(d1)
 
     print("Creating db")
-    os.remove('new.db')
+    try:
+        os.remove('new.db')
+    except FileNotFoundError:
+        pass
     with sqlite3.connect('new.db') as conn:
         cur = conn.cursor()
         cur.executescript('''
@@ -119,4 +133,4 @@ CREATE INDEX "I_AAT" ON "Tracks" (
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    main()
+    main(sys.argv[1:])
